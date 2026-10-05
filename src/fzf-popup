@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+fail() { printf 'fzf-popup: %s\n' "$*" >&2; exit 2; }
+
+# Private entry point invoked in the terminal. The parent owns cleanup.
+if [[ ${1:-} == _run ]]; then
+    [[ $# -ge 2 ]] || fail 'missing working directory'
+    work=$2
+    shift 2
+    status=0
+    fzf "$@" <"$work/input" >"$work/output" || status=$?
+    printf '%s\n' "$status" >"$work/status.tmp"
+    mv -- "$work/status.tmp" "$work/status"
+    exit "$status"
+fi
+
+launcher=${FZF_POPUP_LAUNCHER:-}
+title='fzf popup'
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --title|--launcher)
+            [[ $# -ge 2 ]] || fail "$1 requires a value"
+            if [[ $1 == --title ]]; then title=$2; else launcher=$2; fi
+            shift 2 ;;
+        --) shift; break ;;
+        -h|--help)
+            printf '%s\n' 'Usage: fzf-popup [--title TITLE] [--launcher EXECUTABLE] -- [FZF_ARGS...]' \
+                'Launcher receives a command and its arguments and must wait for completion.' \
+                'Without a launcher, fzf runs in the current terminal.'
+            exit 0 ;;
+        *) fail "unknown option: $1 (put fzf options after --)" ;;
+    esac
+done
+export FZF_POPUP_TITLE=$title
+if [[ -z $launcher ]]; then
+    exec fzf "$@"
+fi
+launcher_path=$(command -v -- "$launcher") || fail "launcher not found: $launcher"
+[[ -x $launcher_path ]] || fail "launcher is not executable: $launcher"
+
+umask 077
+work=$(mktemp -d "${TMPDIR:-/tmp}/fzf-popup.XXXXXXXXXX")
+# Called by the EXIT trap.
+# shellcheck disable=SC2329
+cleanup() { rm -rf -- "$work"; }
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM HUP
+cat >"$work/input"
+self=$(readlink -f -- "$0")
+launcher_status=0
+# Diagnostic output from the launcher must not pollute the selected rows.
+# Reenter through Bash as unbuilt source files need not have an executable shebang.
+"$launcher_path" "$BASH" "$self" _run "$work" "$@" >&2 || launcher_status=$?
+if [[ ! -f $work/status ]]; then
+    printf 'fzf-popup: launcher did not complete the command (exit %s); it must wait\n' "$launcher_status" >&2
+    [[ $launcher_status != 0 ]] || launcher_status=2
+    exit "$launcher_status"
+fi
+IFS= read -r status <"$work/status"
+[[ $status =~ ^[0-9]+$ && $status -le 255 ]] || fail 'invalid command status'
+cat -- "$work/output"
+exit "$status"
