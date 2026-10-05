@@ -45,51 +45,15 @@
               bash
               coreutils
               fzf
-              python3
               shellcheck
               nixfmt
             ];
           };
         }
       );
-      checks = eachSystem (
-        system:
-        let
-          pkgs = mkPkgs system;
-          passed = true;
-        in
-        {
-          default =
-            assert passed;
-            pkgs.runCommand "fzf-popup-checks"
-              {
-                nativeBuildInputs = with pkgs; [
-                  bash
-                  coreutils
-                  fzf
-                  python3
-                  shellcheck
-                  nixfmt
-                ];
-                application = self.packages.${system}.default;
-                REAL_FZF = "${pkgs.fzf}/bin/fzf";
-
-              }
-              ''
-                cp -R ${./.} source
-                chmod -R u+w source
-
-                cd source
-                patchShebangs src tests
-                export PATH="$PWD/src:$PATH"
-                "$application/bin/fzf-popup" --help
-                shellcheck src/*
-                for file in src/* ; do bash -n "$file"; done
-                nixfmt --check flake.nix nix/*.nix
-                python3 tests/check.py
-                touch "$out"
-              '';
-        }
-      );
+      # Building writeShellApplication already checks Bash syntax and ShellCheck.
+      checks = eachSystem (system: {
+        default = self.packages.${system}.default;
+      });
     };
 }

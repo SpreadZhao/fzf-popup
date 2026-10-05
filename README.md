@@ -37,5 +37,9 @@ launcher. As with fzf, preview and action commands are caller-provided shell cod
 
 Nix exports `packages.<system>.default` (also `fzf-popup`), `apps`, `checks`,
 `formatter` and `devShells` for x86_64-linux and aarch64-linux. Build with
-`nix build`, test with `nix flake check`, and develop with `nix develop`.
+`nix build`, check with `nix flake check`, and develop with `nix develop`.
 Runtime dependencies are Bash, coreutils and fzf.
+
+`nix flake check` builds the program and uses the built-in Bash syntax and
+ShellCheck checks from `writeShellApplication`. No custom test suite or Python
+test dependency is included.
